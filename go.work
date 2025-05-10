@@ -1,0 +1,9 @@
+go 1.24
+
+use (
+	internal/pkg
+	internal/svc/user
+	internal/svc/auth
+	internal/svc/wallet
+	internal/svc/transaction
+)
