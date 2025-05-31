@@ -1,46 +1,77 @@
-package app
+package factory
 
 import (
 	"database/sql"
 
-	"github.com/hailsayan/achilles/internal/pkg/logger"
 	"github.com/hailsayan/achilles/internal/svc/user/handler"
 	"github.com/hailsayan/achilles/internal/svc/user/repository"
 	"github.com/hailsayan/achilles/internal/svc/user/usecase"
-	"github.com/redis/go-redis/v9"
 )
 
-type Factory struct {
-	db     *sql.DB
-	redis  *redis.ClusterClient
-	logger logger.Logger
+type UserServiceFactory struct {
+	db        *sql.DB
+	redisRepo repository.RedisRepository
+	
+	userRepo  repository.UserRepository
+	dataStore repository.DataStore
+	
+	userUseCase usecase.UserUseCase
+	
+	userHandler *handler.UserHandler
 }
 
-func NewFactory(db *sql.DB, redis *redis.ClusterClient, logger logger.Logger) *Factory {
-	return &Factory{
-		db:     db,
-		redis:  redis,
-		logger: logger,
+func NewUserServiceFactory(db *sql.DB, redisRepo repository.RedisRepository) *UserServiceFactory {
+	factory := &UserServiceFactory{
+		db:        db,
+		redisRepo: redisRepo,
 	}
+	
+	factory.initRepositories()
+	factory.initUseCases()
+	factory.initHandlers()
+	
+	return factory
 }
 
-func (f *Factory) NewDataStore() repository.DataStore {
-	var cache repository.CacheRepository
+func (f *UserServiceFactory) initRepositories() {
+	f.userRepo = repository.NewUserRepository(f.db)
+	f.dataStore = repository.NewDataStore(f.db)
+}
 
-	if f.redis != nil {
-		redisRepo := repository.NewRedisClusterRepository(f.redis)
-		cache = repository.NewCacheRepository(redisRepo)
+func (f *UserServiceFactory) initUseCases() {
+	f.userUseCase = usecase.NewUserUseCase(f.dataStore, f.redisRepo)
+}
+
+func (f *UserServiceFactory) initHandlers() {
+	f.userHandler = handler.NewUserHandler(f.userUseCase)
+}
+
+func (f *UserServiceFactory) GetUserRepository() repository.UserRepository {
+	return f.userRepo
+}
+
+func (f *UserServiceFactory) GetDataStore() repository.DataStore {
+	return f.dataStore
+}
+
+func (f *UserServiceFactory) GetUserUseCase() usecase.UserUseCase {
+	return f.userUseCase
+}
+
+func (f *UserServiceFactory) GetUserHandler() *handler.UserHandler {
+	return f.userHandler
+}
+
+func (f *UserServiceFactory) Close() error {
+	if f.db != nil {
+		return f.db.Close()
 	}
-
-	return repository.NewDataStore(f.db, cache, f.logger)
+	return nil
 }
 
-func (f *Factory) NewUserUseCase() usecase.UserUseCase {
-	ds := f.NewDataStore()
-	return usecase.NewUserUseCase(ds.UserRepository(), f.logger)
-}
-
-func (f *Factory) NewUserHandler() *handler.UserHandler {
-	userUseCase := f.NewUserUseCase()
-	return handler.NewUserHandler(userUseCase, f.logger)
+func (f *UserServiceFactory) HealthCheck() error {
+	if err := f.db.Ping(); err != nil {
+		return err
+	}
+	return nil
 }

@@ -416,9 +416,9 @@ func (x *UserResponse) GetUpdatedAt() int64 {
 type UpdateUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
-	FirstName     string                 `protobuf:"bytes,3,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
-	LastName      string                 `protobuf:"bytes,4,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
+	Email         *string                `protobuf:"bytes,2,opt,name=email,proto3,oneof" json:"email,omitempty"`
+	FirstName     *string                `protobuf:"bytes,3,opt,name=first_name,json=firstName,proto3,oneof" json:"first_name,omitempty"`
+	LastName      *string                `protobuf:"bytes,4,opt,name=last_name,json=lastName,proto3,oneof" json:"last_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -461,22 +461,22 @@ func (x *UpdateUserRequest) GetUserId() string {
 }
 
 func (x *UpdateUserRequest) GetEmail() string {
-	if x != nil {
-		return x.Email
+	if x != nil && x.Email != nil {
+		return *x.Email
 	}
 	return ""
 }
 
 func (x *UpdateUserRequest) GetFirstName() string {
-	if x != nil {
-		return x.FirstName
+	if x != nil && x.FirstName != nil {
+		return *x.FirstName
 	}
 	return ""
 }
 
 func (x *UpdateUserRequest) GetLastName() string {
-	if x != nil {
-		return x.LastName
+	if x != nil && x.LastName != nil {
+		return *x.LastName
 	}
 	return ""
 }
@@ -613,28 +613,30 @@ const file_user_user_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\x03R\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\x03R\tupdatedAt\"~\n" +
+	"updated_at\x18\a \x01(\x03R\tupdatedAt\"\xb4\x01\n" +
 	"\x11UpdateUserRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
-	"\x05email\x18\x02 \x01(\tR\x05email\x12\x1d\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x19\n" +
+	"\x05email\x18\x02 \x01(\tH\x00R\x05email\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"first_name\x18\x03 \x01(\tR\tfirstName\x12\x1b\n" +
-	"\tlast_name\x18\x04 \x01(\tR\blastName\",\n" +
+	"first_name\x18\x03 \x01(\tH\x01R\tfirstName\x88\x01\x01\x12 \n" +
+	"\tlast_name\x18\x04 \x01(\tH\x02R\blastName\x88\x01\x01B\b\n" +
+	"\x06_emailB\r\n" +
+	"\v_first_nameB\f\n" +
+	"\n" +
+	"_last_name\",\n" +
 	"\x11DeleteUserRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\"H\n" +
 	"\x12DeleteUserResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage2\x89\x03\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\xd4\x02\n" +
 	"\vUserService\x12;\n" +
 	"\n" +
-	"CreateUser\x12\x17.user.CreateUserRequest\x1a\x12.user.UserResponse\"\x00\x125\n" +
-	"\aGetUser\x12\x14.user.GetUserRequest\x1a\x12.user.UserResponse\"\x00\x12;\n" +
-	"\bGetUsers\x12\x15.user.GetUsersRequest\x1a\x16.user.GetUsersResponse\"\x00\x12;\n" +
+	"CreateUser\x12\x17.user.CreateUserRequest\x1a\x12.user.UserResponse\"\x00\x129\n" +
+	"\vGetUserByID\x12\x14.user.GetUserRequest\x1a\x12.user.UserResponse\"\x00\x12I\n" +
+	"\x11GetUserByUsername\x12\x1e.user.GetUserByUsernameRequest\x1a\x12.user.UserResponse\"\x00\x12;\n" +
 	"\n" +
-	"UpdateUser\x12\x17.user.UpdateUserRequest\x1a\x12.user.UserResponse\"\x00\x12A\n" +
-	"\n" +
-	"DeleteUser\x12\x17.user.DeleteUserRequest\x1a\x18.user.DeleteUserResponse\"\x00\x12I\n" +
-	"\x11GetUserByUsername\x12\x1e.user.GetUserByUsernameRequest\x1a\x12.user.UserResponse\"\x00B1Z/github.com/hailsayan/achilles/proto/user;userpbb\x06proto3"
+	"UpdateUser\x12\x17.user.UpdateUserRequest\x1a\x12.user.UserResponse\"\x00\x12E\n" +
+	"\x0eDeleteUserByID\x12\x17.user.DeleteUserRequest\x1a\x18.user.DeleteUserResponse\"\x00B1Z/github.com/hailsayan/achilles/proto/user;userpbb\x06proto3"
 
 var (
 	file_user_user_proto_rawDescOnce sync.Once
@@ -663,19 +665,17 @@ var file_user_user_proto_goTypes = []any{
 var file_user_user_proto_depIdxs = []int32{
 	5, // 0: user.GetUsersResponse.users:type_name -> user.UserResponse
 	0, // 1: user.UserService.CreateUser:input_type -> user.CreateUserRequest
-	1, // 2: user.UserService.GetUser:input_type -> user.GetUserRequest
-	3, // 3: user.UserService.GetUsers:input_type -> user.GetUsersRequest
+	1, // 2: user.UserService.GetUserByID:input_type -> user.GetUserRequest
+	2, // 3: user.UserService.GetUserByUsername:input_type -> user.GetUserByUsernameRequest
 	6, // 4: user.UserService.UpdateUser:input_type -> user.UpdateUserRequest
-	7, // 5: user.UserService.DeleteUser:input_type -> user.DeleteUserRequest
-	2, // 6: user.UserService.GetUserByUsername:input_type -> user.GetUserByUsernameRequest
-	5, // 7: user.UserService.CreateUser:output_type -> user.UserResponse
-	5, // 8: user.UserService.GetUser:output_type -> user.UserResponse
-	4, // 9: user.UserService.GetUsers:output_type -> user.GetUsersResponse
-	5, // 10: user.UserService.UpdateUser:output_type -> user.UserResponse
-	8, // 11: user.UserService.DeleteUser:output_type -> user.DeleteUserResponse
-	5, // 12: user.UserService.GetUserByUsername:output_type -> user.UserResponse
-	7, // [7:13] is the sub-list for method output_type
-	1, // [1:7] is the sub-list for method input_type
+	7, // 5: user.UserService.DeleteUserByID:input_type -> user.DeleteUserRequest
+	5, // 6: user.UserService.CreateUser:output_type -> user.UserResponse
+	5, // 7: user.UserService.GetUserByID:output_type -> user.UserResponse
+	5, // 8: user.UserService.GetUserByUsername:output_type -> user.UserResponse
+	5, // 9: user.UserService.UpdateUser:output_type -> user.UserResponse
+	8, // 10: user.UserService.DeleteUserByID:output_type -> user.DeleteUserResponse
+	6, // [6:11] is the sub-list for method output_type
+	1, // [1:6] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -686,6 +686,7 @@ func file_user_user_proto_init() {
 	if File_user_user_proto != nil {
 		return
 	}
+	file_user_user_proto_msgTypes[6].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
