@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	
-	"github.com/hailsayan/achilles/internal/pkg/logger"
 )
 
 type DBTX interface {
@@ -21,47 +20,31 @@ type DataStore interface {
 type dataStore struct {
 	conn   *sql.DB
 	db     DBTX
-	cache  CacheRepository
-	logger logger.Logger
 }
 
-// NewDataStore creates a new datastore with DB connection and optional Redis cache
-func NewDataStore(db *sql.DB, cache CacheRepository, logger logger.Logger) DataStore {
+func NewDataStore(db *sql.DB,) DataStore {
 	return &dataStore{
 		conn:   db,
 		db:     db,
-		cache:  cache,
-		logger: logger,
 	}
 }
 
-// Atomic executes a function within a transaction
 func (s *dataStore) Atomic(ctx context.Context, fn func(DataStore) error) error {
 	tx, err := s.conn.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
-	
-	// Create a new datastore with the transaction
-	txStore := &dataStore{
-		conn:   s.conn,
-		db:     tx,
-		cache:  s.cache, // Share the same cache
-		logger: s.logger,
-	}
-	
-	err = fn(txStore)
+
+	err = fn(&dataStore{conn: s.conn, db: tx})
 	if err != nil {
 		if errRollback := tx.Rollback(); errRollback != nil {
-			s.logger.Error("Failed to rollback transaction", "error", errRollback)
+			return err
 		}
 		return err
 	}
-	
+
 	return tx.Commit()
 }
-
-// UserRepository returns a repository for user operations
 func (s *dataStore) UserRepository() UserRepository {
-	return NewUserRepository(s.db, s.cache, s.logger)
+	return NewUserRepository(s.db)
 }
