@@ -2,12 +2,12 @@ package handler
 
 import (
 	"context"
-	"errors"
-
+	
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/hailsayan/achilles/internal/svc/user/model"
+	"github.com/hailsayan/achilles/internal/svc/user/dto"
+	"github.com/hailsayan/achilles/internal/svc/user/entity"
 	pb "github.com/hailsayan/achilles/internal/svc/user/pb/user"
 	"github.com/hailsayan/achilles/internal/svc/user/usecase"
 )
@@ -28,12 +28,19 @@ func (h *UserHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest)
 		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
 	}
 
-	user, err := h.userUseCase.CreateUser(ctx, req.Username, req.Email, req.FirstName, req.LastName)
-	if err != nil {
-		return nil, h.handleError(err)
+	createReq := &dto.CreateUserRequest{
+		Username:  req.Username,
+		Email:     req.Email,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
 	}
 
-	return h.modelToProto(user), nil
+	res, err := h.userUseCase.CreateUser(ctx, createReq)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.createResponseToProto(res), nil
 }
 
 func (h *UserHandler) GetUserByID(ctx context.Context, req *pb.GetUserRequest) (*pb.UserResponse, error) {
@@ -41,12 +48,16 @@ func (h *UserHandler) GetUserByID(ctx context.Context, req *pb.GetUserRequest) (
 		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
 	}
 
-	user, err := h.userUseCase.GetUser(ctx, req.UserId)
-	if err != nil {
-		return nil, h.handleError(err)
+	getUserReq := &dto.GetUserRequest{
+		ID: req.UserId,
 	}
 
-	return h.modelToProto(user), nil
+	res, err := h.userUseCase.GetUser(ctx, getUserReq)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.getUserResponseToProto(res), nil
 }
 
 func (h *UserHandler) GetUserByUsername(ctx context.Context, req *pb.GetUserByUsernameRequest) (*pb.UserResponse, error) {
@@ -54,12 +65,16 @@ func (h *UserHandler) GetUserByUsername(ctx context.Context, req *pb.GetUserByUs
 		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
 	}
 
-	user, err := h.userUseCase.GetUserByUsername(ctx, req.Username)
-	if err != nil {
-		return nil, h.handleError(err)
+	getUserReq := &dto.GetUserByUsernameRequest{
+		Username: req.Username,
 	}
 
-	return h.modelToProto(user), nil
+	res, err := h.userUseCase.GetUserByUsername(ctx, getUserReq)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.getUserResponseToProto(res), nil
 }
 
 func (h *UserHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UserResponse, error) {
@@ -67,24 +82,27 @@ func (h *UserHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest)
 		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
 	}
 
-	var email, firstName, lastName *string
+	updateReq := &dto.UpdateUserRequest{
+		ID: req.UserId,
+	}
 
+	// Only set fields that are provided
 	if req.Email != nil {
-		email = req.Email
+		updateReq.Email = req.Email
 	}
 	if req.FirstName != nil {
-		firstName = req.FirstName
+		updateReq.FirstName = req.FirstName
 	}
 	if req.LastName != nil {
-		lastName = req.LastName
+		updateReq.LastName = req.LastName
 	}
 
-	user, err := h.userUseCase.UpdateUser(ctx, req.UserId, email, firstName, lastName)
+	res, err := h.userUseCase.UpdateUser(ctx, updateReq)
 	if err != nil {
-		return nil, h.handleError(err)
+		return nil, err
 	}
 
-	return h.modelToProto(user), nil
+	return h.updateResponseToProto(res), nil
 }
 
 func (h *UserHandler) DeleteUserByID(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
@@ -92,7 +110,11 @@ func (h *UserHandler) DeleteUserByID(ctx context.Context, req *pb.DeleteUserRequ
 		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
 	}
 
-	err := h.userUseCase.DeleteUser(ctx, req.UserId)
+	deleteReq := &dto.DeleteUserRequest{
+		ID: req.UserId,
+	}
+
+	res, err := h.userUseCase.DeleteUser(ctx, deleteReq)
 	if err != nil {
 		return &pb.DeleteUserResponse{
 			Success: false,
@@ -101,11 +123,60 @@ func (h *UserHandler) DeleteUserByID(ctx context.Context, req *pb.DeleteUserRequ
 	}
 
 	return &pb.DeleteUserResponse{
-		Success: true,
-		Message: "user deleted successfully",
+		Success: res.Success,
+		Message: res.Message,
 	}, nil
 }
-func (h *UserHandler) modelToProto(user *model.User) *pb.UserResponse {
+
+func (h *UserHandler) createResponseToProto(res *dto.CreateUserResponse) *pb.UserResponse {
+	if res == nil {
+		return nil
+	}
+
+	return &pb.UserResponse{
+		Id:        res.ID,
+		Username:  res.Username,
+		Email:     res.Email,
+		FirstName: res.FirstName,
+		LastName:  res.LastName,
+		CreatedAt: res.CreatedAt.Unix(),
+		UpdatedAt: res.UpdatedAt.Unix(),
+	}
+}
+
+func (h *UserHandler) getUserResponseToProto(res *dto.GetUserResponse) *pb.UserResponse {
+	if res == nil {
+		return nil
+	}
+
+	return &pb.UserResponse{
+		Id:        res.ID,
+		Username:  res.Username,
+		Email:     res.Email,
+		FirstName: res.FirstName,
+		LastName:  res.LastName,
+		CreatedAt: res.CreatedAt.Unix(),
+		UpdatedAt: res.UpdatedAt.Unix(),
+	}
+}
+
+func (h *UserHandler) updateResponseToProto(res *dto.UpdateUserResponse) *pb.UserResponse {
+	if res == nil {
+		return nil
+	}
+
+	return &pb.UserResponse{
+		Id:        res.ID,
+		Username:  res.Username,
+		Email:     res.Email,
+		FirstName: res.FirstName,
+		LastName:  res.LastName,
+		CreatedAt: res.CreatedAt.Unix(),
+		UpdatedAt: res.UpdatedAt.Unix(),
+	}
+}
+
+func (h *UserHandler) entityToProto(user *entity.User) *pb.UserResponse {
 	if user == nil {
 		return nil
 	}
@@ -118,22 +189,5 @@ func (h *UserHandler) modelToProto(user *model.User) *pb.UserResponse {
 		LastName:  user.LastName,
 		CreatedAt: user.CreatedAt.Unix(),
 		UpdatedAt: user.UpdatedAt.Unix(),
-	}
-}
-
-func (h *UserHandler) handleError(err error) error {
-	switch {
-	case errors.Is(err, usecase.ErrUserNotFound):
-		return status.Error(codes.NotFound, "user not found")
-	case errors.Is(err, usecase.ErrUserAlreadyExists):
-		return status.Error(codes.AlreadyExists, "user already exists")
-	case errors.Is(err, usecase.ErrUsernameExists):
-		return status.Error(codes.AlreadyExists, "username already exists")
-	case errors.Is(err, usecase.ErrEmailExists):
-		return status.Error(codes.AlreadyExists, "email already exists")
-	case errors.Is(err, usecase.ErrInvalidInput):
-		return status.Error(codes.InvalidArgument, "invalid input")
-	default:
-		return status.Error(codes.Internal, "internal server error")
 	}
 }

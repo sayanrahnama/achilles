@@ -2,177 +2,181 @@ package usecase
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hailsayan/achilles/internal/svc/user/model"
+	"github.com/hailsayan/achilles/internal/svc/user/constant"
+	"github.com/hailsayan/achilles/internal/svc/user/dto"
+	"github.com/hailsayan/achilles/internal/svc/user/entity"
+	"github.com/hailsayan/achilles/internal/svc/user/grpcerror"
 	"github.com/hailsayan/achilles/internal/svc/user/repository"
 )
 
-const (
-	UserCachePrefix = "user:%s"
-	UserCacheTTL    = time.Hour * 24
-)
-
-var (
-	ErrUserNotFound       = errors.New("user not found")
-	ErrUserAlreadyExists  = errors.New("user already exists")
-	ErrUsernameExists     = errors.New("username already exists")
-	ErrEmailExists        = errors.New("email already exists")
-	ErrInvalidInput       = errors.New("invalid input")
-)
-
 type UserUseCase interface {
-	CreateUser(ctx context.Context, username, email, firstName, lastName string) (*model.User, error)
-	GetUser(ctx context.Context, id string) (*model.User, error)
-	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
-	UpdateUser(ctx context.Context, userID string, email, firstName, lastName *string) (*model.User, error)
-	DeleteUser(ctx context.Context, id string) error
+	CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.CreateUserResponse, error)
+	GetUser(ctx context.Context, req *dto.GetUserRequest) (*dto.GetUserResponse, error)
+	GetUserByUsername(ctx context.Context, req *dto.GetUserByUsernameRequest) (*dto.GetUserResponse, error)
+	UpdateUser(ctx context.Context, req *dto.UpdateUserRequest) (*dto.UpdateUserResponse, error)
+	DeleteUser(ctx context.Context, req *dto.DeleteUserRequest) (*dto.DeleteUserResponse, error)
 }
 
-type userUseCase struct {
+type userUseCaseImpl struct {
 	dataStore repository.DataStore
 	redisRepo repository.RedisRepository
 }
 
-func NewUserUseCase(dataStore repository.DataStore, redisRepo repository.RedisRepository) UserUseCase {
-	return &userUseCase{
+func NewUserUseCase(
+	dataStore repository.DataStore,
+	redisRepo repository.RedisRepository,
+) UserUseCase {
+	return &userUseCaseImpl{
 		dataStore: dataStore,
 		redisRepo: redisRepo,
 	}
 }
 
-func (u *userUseCase) CreateUser(ctx context.Context, username, email, firstName, lastName string) (*model.User, error) {
-	if err := u.validateCreateUserInput(username, email, firstName, lastName); err != nil {
-		return nil, err
-	}
-
-	normalizedUsername := strings.ToLower(strings.TrimSpace(username))
-	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
-	trimmedFirstName := strings.TrimSpace(firstName)
-	trimmedLastName := strings.TrimSpace(lastName)
-
-	userID := uuid.New().String()
-	now := time.Now().UTC()
-
-	user := &model.User{
-		ID:        userID,
-		Username:  normalizedUsername,
-		Email:     normalizedEmail,
-		FirstName: trimmedFirstName,
-		LastName:  trimmedLastName,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-
+func (u *userUseCaseImpl) CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.CreateUserResponse, error) {
+	res := new(dto.CreateUserResponse)
 	err := u.dataStore.Atomic(ctx, func(ds repository.DataStore) error {
-		userRepo := ds.UserRepository()
+		userRepository := ds.UserRepository()
 
-		existingUser, err := userRepo.GetByUsername(ctx, normalizedUsername)
+		normalizedUsername := strings.ToLower(strings.TrimSpace(req.Username))
+		normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
+
+		existingUser, err := userRepository.GetByUsername(ctx, normalizedUsername)
 		if err != nil {
 			return err
 		}
 		if existingUser != nil {
-			return ErrUsernameExists
+			return grpcerror.NewUsernameExistsError()
 		}
 
-		return userRepo.CreateUser(ctx, user)
+		existingUser, err = userRepository.GetByEmail(ctx, normalizedEmail)
+		if err != nil {
+			return err
+		}
+		if existingUser != nil {
+			return grpcerror.NewEmailExistsError()
+		}
+
+		userID := uuid.New().String()
+		now := time.Now().UTC()
+
+		user := &entity.User{
+			ID:        userID,
+			Username:  normalizedUsername,
+			Email:     normalizedEmail,
+			FirstName: strings.TrimSpace(req.FirstName),
+			LastName:  strings.TrimSpace(req.LastName),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		if err := userRepository.CreateUser(ctx, user); err != nil {
+			return err
+		}
+
+		res = dto.ToCreateUserResponse(user)
+		return nil
 	})
 
 	if err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	return res, nil
 }
 
-func (u *userUseCase) GetUser(ctx context.Context, id string) (*model.User, error) {
-	if strings.TrimSpace(id) == "" {
-		return nil, ErrInvalidInput
+func (u *userUseCaseImpl) GetUser(ctx context.Context, req *dto.GetUserRequest) (*dto.GetUserResponse, error) {
+	cacheKey := fmt.Sprintf(constant.UserCachePrefix, req.ID)
+	cachedData, err := u.redisRepo.Get(ctx, cacheKey)
+	if err == nil && cachedData != "" {
+		var user entity.User
+		if err := json.Unmarshal([]byte(cachedData), &user); err == nil {
+			return dto.ToGetUserResponse(&user), nil
+		}
 	}
 
-	cacheKey := fmt.Sprintf(UserCachePrefix, id)
-	_, err := u.redisRepo.Get(ctx, cacheKey)
-	if err == nil {
-		// In real implementation, you would deserialize cached user here
-		// For now, we'll skip to database
-	}
-
-	var user *model.User
+	res := new(dto.GetUserResponse)
 	err = u.dataStore.Atomic(ctx, func(ds repository.DataStore) error {
-		userRepo := ds.UserRepository()
-		var err error
-		user, err = userRepo.GetByUserID(ctx, id)
-		return err
+		userRepository := ds.UserRepository()
+
+		user, err := userRepository.GetByUserID(ctx, req.ID)
+		if err != nil {
+			return err
+		}
+
+		if user == nil {
+			return grpcerror.NewUserNotFoundError()
+		}
+
+		if userData, err := json.Marshal(user); err == nil {
+			if err := u.redisRepo.Set(ctx, cacheKey, string(userData), constant.UserCacheTTL); err != nil {
+				// Log error but don't fail the request
+			}
+		}
+
+		res = dto.ToGetUserResponse(user)
+		return nil
 	})
 
 	if err != nil {
 		return nil, err
 	}
 
-	if user == nil {
-		return nil, ErrUserNotFound
-	}
-
-	if err := u.redisRepo.Set(ctx, cacheKey, user.ID, UserCacheTTL); err != nil {
-		fmt.Printf("Failed to cache user: %v\n", err)
-	}
-
-	return user, nil
+	return res, nil
 }
 
-func (u *userUseCase) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
-	if strings.TrimSpace(username) == "" {
-		return nil, ErrInvalidInput
-	}
-
-	normalizedUsername := strings.ToLower(strings.TrimSpace(username))
-
-	var user *model.User
+func (u *userUseCaseImpl) GetUserByUsername(ctx context.Context, req *dto.GetUserByUsernameRequest) (*dto.GetUserResponse, error) {
+	res := new(dto.GetUserResponse)
 	err := u.dataStore.Atomic(ctx, func(ds repository.DataStore) error {
-		userRepo := ds.UserRepository()
-		var err error
-		user, err = userRepo.GetByUsername(ctx, normalizedUsername)
-		return err
+		userRepository := ds.UserRepository()
+
+		normalizedUsername := strings.ToLower(strings.TrimSpace(req.Username))
+		user, err := userRepository.GetByUsername(ctx, normalizedUsername)
+		if err != nil {
+			return err
+		}
+
+		if user == nil {
+			return grpcerror.NewUserNotFoundError()
+		}
+
+		cacheKey := fmt.Sprintf(constant.UserCachePrefix, user.ID)
+		if userData, err := json.Marshal(user); err == nil {
+			if err := u.redisRepo.Set(ctx, cacheKey, string(userData), constant.UserCacheTTL); err != nil {
+				// Log error but don't fail the request
+			}
+		}
+
+		res = dto.ToGetUserResponse(user)
+		return nil
 	})
 
 	if err != nil {
 		return nil, err
 	}
 
-	if user == nil {
-		return nil, ErrUserNotFound
-	}
-
-	cacheKey := fmt.Sprintf(UserCachePrefix, user.ID)
-	if err := u.redisRepo.Set(ctx, cacheKey, user.ID, UserCacheTTL); err != nil {
-		fmt.Printf("Failed to cache user: %v\n", err)
-	}
-
-	return user, nil
+	return res, nil
 }
 
-func (u *userUseCase) UpdateUser(ctx context.Context, userID string, email, firstName, lastName *string) (*model.User, error) {
-	if strings.TrimSpace(userID) == "" {
-		return nil, ErrInvalidInput
-	}
-
-	var updatedUser *model.User
+func (u *userUseCaseImpl) UpdateUser(ctx context.Context, req *dto.UpdateUserRequest) (*dto.UpdateUserResponse, error) {
+	res := new(dto.UpdateUserResponse)
 	err := u.dataStore.Atomic(ctx, func(ds repository.DataStore) error {
-		userRepo := ds.UserRepository()
+		userRepository := ds.UserRepository()
 
-		existingUser, err := userRepo.GetByUserID(ctx, userID)
+		existingUser, err := userRepository.GetByUserID(ctx, req.ID)
 		if err != nil {
 			return err
 		}
 		if existingUser == nil {
-			return ErrUserNotFound
+			return grpcerror.NewUserNotFoundError()
 		}
 
-		updatedUser = &model.User{
+		updatedUser := &entity.User{
 			ID:        existingUser.ID,
 			Username:  existingUser.Username,
 			Email:     existingUser.Email,
@@ -182,121 +186,75 @@ func (u *userUseCase) UpdateUser(ctx context.Context, userID string, email, firs
 			UpdatedAt: time.Now().UTC(),
 		}
 
-		if email != nil {
-			normalizedEmail := strings.ToLower(strings.TrimSpace(*email))
-			if err := u.validateEmail(normalizedEmail); err != nil {
+		if req.Email != nil {
+			normalizedEmail := strings.ToLower(strings.TrimSpace(*req.Email))
+			existingEmailUser, err := userRepository.GetByEmail(ctx, normalizedEmail)
+			if err != nil {
 				return err
+			}
+			if existingEmailUser != nil && existingEmailUser.ID != req.ID {
+				return grpcerror.NewEmailExistsError()
 			}
 			updatedUser.Email = normalizedEmail
 		}
 
-		if firstName != nil {
-			trimmedFirstName := strings.TrimSpace(*firstName)
-			if err := u.validateName(trimmedFirstName); err != nil {
-				return err
-			}
-			updatedUser.FirstName = trimmedFirstName
+		if req.FirstName != nil {
+			updatedUser.FirstName = strings.TrimSpace(*req.FirstName)
 		}
 
-		if lastName != nil {
-			trimmedLastName := strings.TrimSpace(*lastName)
-			if err := u.validateName(trimmedLastName); err != nil {
-				return err
-			}
-			updatedUser.LastName = trimmedLastName
+		if req.LastName != nil {
+			updatedUser.LastName = strings.TrimSpace(*req.LastName)
 		}
 
-		return userRepo.UpdateUser(ctx, updatedUser)
+		if err := userRepository.UpdateUser(ctx, updatedUser); err != nil {
+			return err
+		}
+
+		cacheKey := fmt.Sprintf(constant.UserCachePrefix, req.ID)
+		if err := u.redisRepo.Delete(ctx, cacheKey); err != nil {
+			// Log error but don't fail the request
+		}
+
+		res = dto.ToUpdateUserResponse(updatedUser)
+		return nil
 	})
 
 	if err != nil {
 		return nil, err
 	}
 
-	cacheKey := fmt.Sprintf(UserCachePrefix, userID)
-	if err := u.redisRepo.Delete(ctx, cacheKey); err != nil {
-		fmt.Printf("Failed to invalidate user cache: %v\n", err)
-	}
-
-	return updatedUser, nil
+	return res, nil
 }
 
-func (u *userUseCase) DeleteUser(ctx context.Context, id string) error {
-	if strings.TrimSpace(id) == "" {
-		return ErrInvalidInput
-	}
-
+func (u *userUseCaseImpl) DeleteUser(ctx context.Context, req *dto.DeleteUserRequest) (*dto.DeleteUserResponse, error) {
+	res := new(dto.DeleteUserResponse)
 	err := u.dataStore.Atomic(ctx, func(ds repository.DataStore) error {
-		userRepo := ds.UserRepository()
+		userRepository := ds.UserRepository()
 
-		existingUser, err := userRepo.GetByUserID(ctx, id)
+		existingUser, err := userRepository.GetByUserID(ctx, req.ID)
 		if err != nil {
 			return err
 		}
 		if existingUser == nil {
-			return ErrUserNotFound
+			return grpcerror.NewUserNotFoundError()
 		}
 
-		return userRepo.DeleteUserByID(ctx, id)
+		if err := userRepository.DeleteUserByID(ctx, req.ID); err != nil {
+			return err
+		}
+
+		cacheKey := fmt.Sprintf(constant.UserCachePrefix, req.ID)
+		if err := u.redisRepo.Delete(ctx, cacheKey); err != nil {
+			// Log error but don't fail the request
+		}
+
+		res = dto.ToDeleteUserResponse(true, constant.UserDeletedSuccessfully)
+		return nil
 	})
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	cacheKey := fmt.Sprintf(UserCachePrefix, id)
-	if err := u.redisRepo.Delete(ctx, cacheKey); err != nil {
-		fmt.Printf("Failed to invalidate user cache: %v\n", err)
-	}
-
-	return nil
-}
-
-func (u *userUseCase) validateCreateUserInput(username, email, firstName, lastName string) error {
-	if err := u.validateUsername(username); err != nil {
-		return err
-	}
-	if err := u.validateEmail(email); err != nil {
-		return err
-	}
-	if err := u.validateName(firstName); err != nil {
-		return err
-	}
-	if err := u.validateName(lastName); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (u *userUseCase) validateUsername(username string) error {
-	username = strings.TrimSpace(username)
-	if username == "" {
-		return ErrInvalidInput
-	}
-	if len(username) < 3 || len(username) > 50 {
-		return ErrInvalidInput
-	}
-	return nil
-}
-
-func (u *userUseCase) validateEmail(email string) error {
-	email = strings.TrimSpace(email)
-	if email == "" {
-		return ErrInvalidInput
-	}
-	if !strings.Contains(email, "@") {
-		return ErrInvalidInput
-	}
-	return nil
-}
-
-func (u *userUseCase) validateName(name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ErrInvalidInput
-	}
-	if len(name) > 64 {
-		return ErrInvalidInput
-	}
-	return nil
+	return res, nil
 }
