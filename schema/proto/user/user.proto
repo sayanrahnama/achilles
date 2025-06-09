@@ -6,49 +6,27 @@ option go_package = "github.com/hailsayan/achilles/proto/user;userpb";
 service UserService {
   rpc CreateUser(CreateUserRequest) returns (UserResponse) {}
   rpc GetUserByID(GetUserRequest) returns (UserResponse) {}
-  rpc GetUserByUsername(GetUserByUsernameRequest) returns (UserResponse) {}
   rpc UpdateUser(UpdateUserRequest) returns (UserResponse) {}
   rpc DeleteUserByID(DeleteUserRequest) returns (DeleteUserResponse) {}
 }
 
 message CreateUserRequest {
-  string id = 1;
-  string username = 2;
-  string email = 3;
-  string first_name = 4;
-  string last_name = 5;
+  string email = 1;
+  string first_name = 2;
+  string last_name = 3;
 }
 
 message GetUserRequest {
   string user_id = 1;
 }
 
-message GetUserByUsernameRequest {
-  string username = 1;
-}
-
-message GetUsersRequest {
-  int32 page = 1;
-  int32 page_size = 2;
-  string sort_by = 3;
-  bool sort_desc = 4;
-}
-
-message GetUsersResponse {
-  repeated UserResponse users = 1;
-  int32 total = 2;
-  int32 page = 3;
-  int32 page_size = 4;
-}
-
 message UserResponse {
   string id = 1;
-  string username = 2;
-  string email = 3;
-  string first_name = 4;
-  string last_name = 5;
-  int64 created_at = 6;
-  int64 updated_at = 7;
+  string email = 2;
+  string first_name = 3;
+  string last_name = 4;
+  int64 created_at = 5;
+  int64 updated_at = 6;
 }
 
 message UpdateUserRequest {

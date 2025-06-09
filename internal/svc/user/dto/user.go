@@ -7,7 +7,6 @@ import (
 )
 
 type CreateUserRequest struct {
-	Username  string `json:"username" validate:"required,min=3,max=50"`
 	Email     string `json:"email" validate:"required,email"`
 	FirstName string `json:"first_name" validate:"required,max=64"`
 	LastName  string `json:"last_name" validate:"required,max=64"`
@@ -15,10 +14,6 @@ type CreateUserRequest struct {
 
 type GetUserRequest struct {
 	ID string `json:"id" validate:"required"`
-}
-
-type GetUserByUsernameRequest struct {
-	Username string `json:"username" validate:"required"`
 }
 
 type UpdateUserRequest struct {
@@ -34,7 +29,6 @@ type DeleteUserRequest struct {
 
 type CreateUserResponse struct {
 	ID        string    `json:"id"`
-	Username  string    `json:"username"`
 	Email     string    `json:"email"`
 	FirstName string    `json:"first_name"`
 	LastName  string    `json:"last_name"`
@@ -44,7 +38,6 @@ type CreateUserResponse struct {
 
 type GetUserResponse struct {
 	ID        string    `json:"id"`
-	Username  string    `json:"username"`
 	Email     string    `json:"email"`
 	FirstName string    `json:"first_name"`
 	LastName  string    `json:"last_name"`
@@ -54,7 +47,6 @@ type GetUserResponse struct {
 
 type UpdateUserResponse struct {
 	ID        string    `json:"id"`
-	Username  string    `json:"username"`
 	Email     string    `json:"email"`
 	FirstName string    `json:"first_name"`
 	LastName  string    `json:"last_name"`
@@ -70,7 +62,6 @@ type DeleteUserResponse struct {
 func ToCreateUserResponse(user *entity.User) *CreateUserResponse {
 	return &CreateUserResponse{
 		ID:        user.ID,
-		Username:  user.Username,
 		Email:     user.Email,
 		FirstName: user.FirstName,
 		LastName:  user.LastName,
@@ -82,7 +73,6 @@ func ToCreateUserResponse(user *entity.User) *CreateUserResponse {
 func ToGetUserResponse(user *entity.User) *GetUserResponse {
 	return &GetUserResponse{
 		ID:        user.ID,
-		Username:  user.Username,
 		Email:     user.Email,
 		FirstName: user.FirstName,
 		LastName:  user.LastName,
@@ -94,7 +84,6 @@ func ToGetUserResponse(user *entity.User) *GetUserResponse {
 func ToUpdateUserResponse(user *entity.User) *UpdateUserResponse {
 	return &UpdateUserResponse{
 		ID:        user.ID,
-		Username:  user.Username,
 		Email:     user.Email,
 		FirstName: user.FirstName,
 		LastName:  user.LastName,

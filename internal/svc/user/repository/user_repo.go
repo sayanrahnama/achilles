@@ -11,7 +11,6 @@ import (
 type UserRepository interface {
 	CreateUser(ctx context.Context, user *entity.User) error
 	GetByUserID(ctx context.Context, id string) (*entity.User, error)
-	GetByUsername(ctx context.Context, username string) (*entity.User, error)
 	GetByEmail(ctx context.Context, email string) (*entity.User, error)
 	UpdateUser(ctx context.Context, user *entity.User) error
 	DeleteUserByID(ctx context.Context, id string) error
@@ -30,14 +29,13 @@ func NewUserRepository(db DBTX) UserRepository {
 func (r *userRepository) CreateUser(ctx context.Context, user *entity.User) error {
 	query := `
 		INSERT INTO
-			users (id, username, email, first_name, last_name, created_at, updated_at)
+			users (id, email, first_name, last_name, created_at, updated_at)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7)
+			($1, $2, $3, $4, $5, $6)
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
 		user.ID,
-		user.Username,
 		user.Email,
 		user.FirstName,
 		user.LastName,
@@ -51,7 +49,7 @@ func (r *userRepository) CreateUser(ctx context.Context, user *entity.User) erro
 func (r *userRepository) GetByUserID(ctx context.Context, id string) (*entity.User, error) {
 	query := `
 		SELECT
-			id, username, email, first_name, last_name, created_at, updated_at
+			id, email, first_name, last_name, created_at, updated_at
 		FROM
 			users
 		WHERE
@@ -61,38 +59,6 @@ func (r *userRepository) GetByUserID(ctx context.Context, id string) (*entity.Us
 	user := &entity.User{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID,
-		&user.Username,
-		&user.Email,
-		&user.FirstName,
-		&user.LastName,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return user, nil
-}
-
-func (r *userRepository) GetByUsername(ctx context.Context, username string) (*entity.User, error) {
-	query := `
-		SELECT
-			id, username, email, first_name, last_name, created_at, updated_at
-		FROM
-			users
-		WHERE
-			username = $1
-	`
-
-	user := &entity.User{}
-	err := r.db.QueryRowContext(ctx, query, username).Scan(
-		&user.ID,
-		&user.Username,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
@@ -113,7 +79,7 @@ func (r *userRepository) GetByUsername(ctx context.Context, username string) (*e
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*entity.User, error) {
 	query := `
 		SELECT
-			id, username, email, first_name, last_name, created_at, updated_at
+			id, email, first_name, last_name, created_at, updated_at
 		FROM
 			users
 		WHERE
@@ -123,7 +89,6 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*entity.
 	user := &entity.User{}
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID,
-		&user.Username,
 		&user.Email,
 		&user.FirstName,
 		&user.LastName,
@@ -146,13 +111,12 @@ func (r *userRepository) UpdateUser(ctx context.Context, user *entity.User) erro
 		UPDATE
 			users
 		SET
-			username = $1, email = $2, first_name = $3, last_name = $4, updated_at = $5
+			email = $1, first_name = $2, last_name = $3, updated_at = $4
 		WHERE
-			id = $6
+			id = $5
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
-		user.Username,
 		user.Email,
 		user.FirstName,
 		user.LastName,

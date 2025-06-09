@@ -17,7 +17,7 @@ type JwtConfig struct {
 }
 
 type JwtUtil interface {
-	GenerateAccessToken(userID, username string) (string, time.Time, error)
+	GenerateAccessToken(userID, email string) (string, time.Time, error)
 	GenerateRefreshToken(userID string) (string, error)
 	ValidateToken(token string) (*JWTClaims, error)
 	GetTokenExpiration() time.Time

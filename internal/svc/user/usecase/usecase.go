@@ -18,7 +18,6 @@ import (
 type UserUseCase interface {
 	CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.CreateUserResponse, error)
 	GetUser(ctx context.Context, req *dto.GetUserRequest) (*dto.GetUserResponse, error)
-	GetUserByUsername(ctx context.Context, req *dto.GetUserByUsernameRequest) (*dto.GetUserResponse, error)
 	UpdateUser(ctx context.Context, req *dto.UpdateUserRequest) (*dto.UpdateUserResponse, error)
 	DeleteUser(ctx context.Context, req *dto.DeleteUserRequest) (*dto.DeleteUserResponse, error)
 }
@@ -43,18 +42,9 @@ func (u *userUseCaseImpl) CreateUser(ctx context.Context, req *dto.CreateUserReq
 	err := u.dataStore.Atomic(ctx, func(ds repository.DataStore) error {
 		userRepository := ds.UserRepository()
 
-		normalizedUsername := strings.ToLower(strings.TrimSpace(req.Username))
 		normalizedEmail := strings.ToLower(strings.TrimSpace(req.Email))
 
-		existingUser, err := userRepository.GetByUsername(ctx, normalizedUsername)
-		if err != nil {
-			return err
-		}
-		if existingUser != nil {
-			return grpcerror.NewUsernameExistsError()
-		}
-
-		existingUser, err = userRepository.GetByEmail(ctx, normalizedEmail)
+		existingUser, err := userRepository.GetByEmail(ctx, normalizedEmail)
 		if err != nil {
 			return err
 		}
@@ -67,7 +57,6 @@ func (u *userUseCaseImpl) CreateUser(ctx context.Context, req *dto.CreateUserReq
 
 		user := &entity.User{
 			ID:        userID,
-			Username:  normalizedUsername,
 			Email:     normalizedEmail,
 			FirstName: strings.TrimSpace(req.FirstName),
 			LastName:  strings.TrimSpace(req.LastName),
@@ -92,8 +81,8 @@ func (u *userUseCaseImpl) CreateUser(ctx context.Context, req *dto.CreateUserReq
 
 func (u *userUseCaseImpl) GetUser(ctx context.Context, req *dto.GetUserRequest) (*dto.GetUserResponse, error) {
 	cacheKey := fmt.Sprintf(constant.UserCachePrefix, req.ID)
-	cachedData, err := u.redisRepo.Get(ctx, cacheKey)
-	if err == nil && cachedData != "" {
+
+	if cachedData, err := u.redisRepo.Get(ctx, cacheKey); err == nil && cachedData != "" {
 		var user entity.User
 		if err := json.Unmarshal([]byte(cachedData), &user); err == nil {
 			return dto.ToGetUserResponse(&user), nil
@@ -101,7 +90,7 @@ func (u *userUseCaseImpl) GetUser(ctx context.Context, req *dto.GetUserRequest) 
 	}
 
 	res := new(dto.GetUserResponse)
-	err = u.dataStore.Atomic(ctx, func(ds repository.DataStore) error {
+	err := u.dataStore.Atomic(ctx, func(ds repository.DataStore) error {
 		userRepository := ds.UserRepository()
 
 		user, err := userRepository.GetByUserID(ctx, req.ID)
@@ -114,42 +103,7 @@ func (u *userUseCaseImpl) GetUser(ctx context.Context, req *dto.GetUserRequest) 
 		}
 
 		if userData, err := json.Marshal(user); err == nil {
-			if err := u.redisRepo.Set(ctx, cacheKey, string(userData), constant.UserCacheTTL); err != nil {
-				// Log error but don't fail the request
-			}
-		}
-
-		res = dto.ToGetUserResponse(user)
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return res, nil
-}
-
-func (u *userUseCaseImpl) GetUserByUsername(ctx context.Context, req *dto.GetUserByUsernameRequest) (*dto.GetUserResponse, error) {
-	res := new(dto.GetUserResponse)
-	err := u.dataStore.Atomic(ctx, func(ds repository.DataStore) error {
-		userRepository := ds.UserRepository()
-
-		normalizedUsername := strings.ToLower(strings.TrimSpace(req.Username))
-		user, err := userRepository.GetByUsername(ctx, normalizedUsername)
-		if err != nil {
-			return err
-		}
-
-		if user == nil {
-			return grpcerror.NewUserNotFoundError()
-		}
-
-		cacheKey := fmt.Sprintf(constant.UserCachePrefix, user.ID)
-		if userData, err := json.Marshal(user); err == nil {
-			if err := u.redisRepo.Set(ctx, cacheKey, string(userData), constant.UserCacheTTL); err != nil {
-				// Log error but don't fail the request
-			}
+			u.redisRepo.Set(ctx, cacheKey, string(userData), constant.UserCacheTTL)
 		}
 
 		res = dto.ToGetUserResponse(user)
@@ -178,7 +132,6 @@ func (u *userUseCaseImpl) UpdateUser(ctx context.Context, req *dto.UpdateUserReq
 
 		updatedUser := &entity.User{
 			ID:        existingUser.ID,
-			Username:  existingUser.Username,
 			Email:     existingUser.Email,
 			FirstName: existingUser.FirstName,
 			LastName:  existingUser.LastName,
@@ -211,9 +164,7 @@ func (u *userUseCaseImpl) UpdateUser(ctx context.Context, req *dto.UpdateUserReq
 		}
 
 		cacheKey := fmt.Sprintf(constant.UserCachePrefix, req.ID)
-		if err := u.redisRepo.Delete(ctx, cacheKey); err != nil {
-			// Log error but don't fail the request
-		}
+		u.redisRepo.Delete(ctx, cacheKey)
 
 		res = dto.ToUpdateUserResponse(updatedUser)
 		return nil
@@ -244,9 +195,7 @@ func (u *userUseCaseImpl) DeleteUser(ctx context.Context, req *dto.DeleteUserReq
 		}
 
 		cacheKey := fmt.Sprintf(constant.UserCachePrefix, req.ID)
-		if err := u.redisRepo.Delete(ctx, cacheKey); err != nil {
-			// Log error but don't fail the request
-		}
+		u.redisRepo.Delete(ctx, cacheKey)
 
 		res = dto.ToDeleteUserResponse(true, constant.UserDeletedSuccessfully)
 		return nil

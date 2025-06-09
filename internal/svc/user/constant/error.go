@@ -2,8 +2,9 @@ package constant
 
 const (
 	UserNotFoundErrorMessage     = "user not found"
-	UsernameExistsErrorMessage   = "username already exists"
 	EmailExistsErrorMessage      = "email already exists"
 	InternalServerErrorMessage   = "internal server error"
 	ServiceUnavailableMessage    = "service unavailable"
+	CacheSetError = "failed to set cache"
+	CacheDeleteError = "failed to delete cache"
 )
